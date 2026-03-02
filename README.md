@@ -57,3 +57,7 @@ Open dashboard at `http://127.0.0.1:5173`.
 - Google Calendar is mocked through `backend/data/google_calendar_mock.json` in this MVP.
 - Telegram polling uses bot `getUpdates` with offset persistence in DB.
 - If `OPENAI_API_KEY` is not configured, a heuristic parser is used.
+
+## Documentation
+
+- Next-step guide (CN): `docs/PHASE1_NEXT_STEPS_GUIDE.md`
