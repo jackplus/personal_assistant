@@ -35,6 +35,14 @@ npm run dev
 
 Open dashboard at `http://127.0.0.1:5173`.
 
+## Seed demo data
+
+```bash
+cd backend
+source .venv/bin/activate
+PYTHONPATH=. python scripts/seed_demo_data.py
+```
+
 ## Main API endpoints
 
 - `GET /api/dashboard/overview`
