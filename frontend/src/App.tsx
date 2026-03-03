@@ -5,10 +5,12 @@ import {
   Card,
   Col,
   DatePicker,
+  Drawer,
   Form,
   Input,
   InputNumber,
   Layout,
+  List,
   Row,
   Select,
   Space,
@@ -22,7 +24,7 @@ import {
 import dayjs from 'dayjs';
 
 import api from './api';
-import type { CalendarEvent, Contact, Task, TaskStatus } from './types';
+import type { CalendarEvent, Contact, Task, TaskDetails, TaskStatus } from './types';
 
 const { Header, Content } = Layout;
 const statusOptions: TaskStatus[] = ['todo', 'in_progress', 'blocked', 'done', 'cancelled'];
@@ -49,6 +51,9 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [taskFilters, setTaskFilters] = useState<TaskFilters>({});
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [taskDetailsLoading, setTaskDetailsLoading] = useState(false);
+  const [taskDetails, setTaskDetails] = useState<TaskDetails | null>(null);
 
   const loadTasksData = async (filters: TaskFilters = taskFilters) => {
     const params: Record<string, string> = {};
@@ -102,6 +107,23 @@ function App() {
     await api.patch(`/api/tasks/${taskId}`, patch);
     await loadTasksData(taskFilters);
     await api.get('/api/dashboard/overview').then((ov) => setOverview(ov.data));
+    if (taskDetails && taskDetails.task.id === taskId) {
+      await openTaskDetails(taskId);
+    }
+  };
+
+  const openTaskDetails = async (taskId: number) => {
+    setTaskDetailsLoading(true);
+    setDetailsOpen(true);
+    try {
+      const response = await api.get(`/api/tasks/${taskId}/details`);
+      setTaskDetails(response.data);
+    } catch {
+      message.error('Failed to load task breakdown');
+      setDetailsOpen(false);
+    } finally {
+      setTaskDetailsLoading(false);
+    }
   };
 
   const approvePendingTags = async (contactId: number) => {
@@ -144,6 +166,7 @@ function App() {
           </Typography.Title>
           <Space>
             <Button onClick={() => triggerSync('/api/sync/telegram')}>Sync Telegram</Button>
+            <Button onClick={() => triggerSync('/api/sync/telegram/user')}>Sync Telegram User</Button>
             <Button onClick={() => triggerSync('/api/sync/calendar')}>Sync Calendar</Button>
             <Button type="primary" onClick={() => triggerSync('/api/summary/daily')}>
               Generate Daily Summary
@@ -317,7 +340,7 @@ function App() {
                       <TaskCreateForm onCreated={loadAll} />
                     </Card>
                     <Card
-                      title="Task List"
+                      title="Task Cards"
                       loading={loading}
                       extra={
                         <Space>
@@ -340,44 +363,55 @@ function App() {
                         </Space>
                       }
                     >
-                      <Table
-                        rowKey="id"
-                        dataSource={tasks}
-                        columns={[
-                          { title: 'Title', dataIndex: 'title' },
-                          { title: 'Platform', dataIndex: 'source_platform' },
-                          { title: 'Work Category', dataIndex: 'work_category', render: (v: string) => v || 'uncategorized' },
-                          { title: 'Assignee', dataIndex: 'assignee_name', render: (v: string) => v || '-' },
-                          {
-                            title: 'Status',
-                            dataIndex: 'status',
-                            render: (value: TaskStatus, task: Task) => (
-                              <Select
-                                value={value}
-                                style={{ width: 140 }}
-                                onChange={(next) => updateTask(task.id, { status: next })}
-                                options={statusOptions.map((s) => ({ label: s, value: s }))}
-                              />
-                            ),
-                          },
-                          { title: 'Due', dataIndex: 'due_at', render: (v: string) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-') },
-                          {
-                            title: 'Location',
-                            dataIndex: 'location',
-                            render: (value: string, task: Task) => (
-                              <Input
-                                defaultValue={value || ''}
-                                placeholder="location"
-                                onBlur={(e) => {
-                                  if ((value || '') !== e.target.value) {
-                                    updateTask(task.id, { location: e.target.value || null });
-                                  }
-                                }}
-                              />
-                            ),
-                          },
-                        ]}
-                      />
+                      <Row gutter={[12, 12]}>
+                        {tasks.map((task) => (
+                          <Col xs={24} md={12} xl={8} key={task.id}>
+                            <Card
+                              size="small"
+                              title={task.title}
+                              extra={<Tag>{task.status}</Tag>}
+                              actions={[
+                                <Button type="link" onClick={() => openTaskDetails(task.id)} key={`view-${task.id}`}>
+                                  View Breakdown
+                                </Button>,
+                              ]}
+                            >
+                              <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                                <Typography.Text type="secondary">
+                                  {task.source_message_preview || task.description || 'No chat summary available'}
+                                </Typography.Text>
+                                <Typography.Text>Platform: {task.source_platform}</Typography.Text>
+                                <Typography.Text>Category: {task.work_category || 'uncategorized'}</Typography.Text>
+                                <Typography.Text>Due: {task.due_at ? dayjs(task.due_at).format('YYYY-MM-DD HH:mm') : '-'}</Typography.Text>
+                                <Space>
+                                  <Typography.Text>Assignee:</Typography.Text>
+                                  <Input
+                                    size="small"
+                                    defaultValue={task.assignee_name || ''}
+                                    placeholder="assignee"
+                                    style={{ width: 140 }}
+                                    onBlur={(e) => {
+                                      if ((task.assignee_name || '') !== e.target.value) {
+                                        updateTask(task.id, { assignee_name: e.target.value || null });
+                                      }
+                                    }}
+                                  />
+                                </Space>
+                                <Space>
+                                  <Typography.Text>Status:</Typography.Text>
+                                  <Select
+                                    size="small"
+                                    value={task.status}
+                                    style={{ width: 140 }}
+                                    onChange={(next) => updateTask(task.id, { status: next })}
+                                    options={statusOptions.map((s) => ({ label: s, value: s }))}
+                                  />
+                                </Space>
+                              </Space>
+                            </Card>
+                          </Col>
+                        ))}
+                      </Row>
                     </Card>
                   </Space>
                 ),
@@ -417,6 +451,10 @@ function App() {
                     <Typography.Paragraph code>
                       OPENAI_API_KEY=... TELEGRAM_BOT_TOKEN=... TELEGRAM_NOTIFY_CHAT_ID=...
                     </Typography.Paragraph>
+                    <Typography.Paragraph code>
+                      TELEGRAM_SYNC_MODE=user TELEGRAM_USER_API_ID=... TELEGRAM_USER_API_HASH=...
+                    </Typography.Paragraph>
+                    <Typography.Paragraph code>TELEGRAM_USER_STRING_SESSION=...</Typography.Paragraph>
                     <Typography.Paragraph>
                       Google Calendar sync is mocked through backend/data/google_calendar_mock.json in this MVP.
                     </Typography.Paragraph>
@@ -425,6 +463,69 @@ function App() {
               },
             ]}
           />
+
+          <Drawer
+            title={taskDetails?.task.title || 'Task Breakdown'}
+            open={detailsOpen}
+            onClose={() => setDetailsOpen(false)}
+            width={560}
+            loading={taskDetailsLoading}
+          >
+            {taskDetails ? (
+              <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                <Card size="small" title="Task Summary">
+                  <Typography.Paragraph>{taskDetails.summary}</Typography.Paragraph>
+                  <Space wrap>
+                    <Tag>{taskDetails.task.status}</Tag>
+                    <Tag>{taskDetails.task.source_platform}</Tag>
+                    <Tag>{taskDetails.task.work_category || 'uncategorized'}</Tag>
+                  </Space>
+                </Card>
+
+                <Tabs
+                  items={[
+                    {
+                      key: 'todo',
+                      label: 'To-Do List',
+                      children: (
+                        <List
+                          bordered
+                          dataSource={taskDetails.todo_items}
+                          renderItem={(item, index) => (
+                            <List.Item>
+                              {index + 1}. {item}
+                            </List.Item>
+                          )}
+                        />
+                      ),
+                    },
+                    {
+                      key: 'stakeholders',
+                      label: 'Stakeholder List',
+                      children: (
+                        <List
+                          bordered
+                          dataSource={taskDetails.stakeholders}
+                          renderItem={(item) => <List.Item>{item}</List.Item>}
+                        />
+                      ),
+                    },
+                    {
+                      key: 'source',
+                      label: 'Source Chat',
+                      children: (
+                        <Card size="small">
+                          <Typography.Paragraph style={{ whiteSpace: 'pre-wrap' }}>
+                            {taskDetails.source_message_content || 'No source message linked.'}
+                          </Typography.Paragraph>
+                        </Card>
+                      ),
+                    },
+                  ]}
+                />
+              </Space>
+            ) : null}
+          </Drawer>
         </div>
       </Content>
     </Layout>
@@ -454,8 +555,7 @@ function TaskCreateForm({ onCreated }: { onCreated: () => Promise<void> }) {
     <Form form={form} layout="vertical">
       <Row gutter={12}>
         <Col span={6}>
-          <Form.Item name="title" label="Title" rules={[{ required: true }]}
-          >
+          <Form.Item name="title" label="Title" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
         </Col>

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,10 +19,31 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str | None = None
     telegram_notify_chat_id: str | None = None
+    telegram_sync_mode: str = "bot"
+    telegram_user_api_id: int | None = None
+    telegram_user_api_hash: str | None = None
+    telegram_user_string_session: str | None = None
+    telegram_user_dialog_limit: int = 30
+    telegram_user_message_limit: int = 100
+    telegram_user_include_outgoing: bool = False
 
     google_calendar_mock_path: str = str(DATA_DIR / "google_calendar_mock.json")
 
     persist_raw_message_content: bool = False
+
+    @field_validator("telegram_user_api_id", mode="before")
+    @classmethod
+    def _empty_string_to_none_int(cls, value):
+        if value in ("", None):
+            return None
+        return value
+
+    @field_validator("telegram_user_dialog_limit", "telegram_user_message_limit", mode="before")
+    @classmethod
+    def _empty_string_to_default_limit(cls, value, info):
+        if value in ("", None):
+            return 30 if info.field_name == "telegram_user_dialog_limit" else 100
+        return value
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

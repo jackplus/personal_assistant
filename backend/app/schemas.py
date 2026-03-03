@@ -52,6 +52,7 @@ class TaskOut(BaseModel):
     assignee_name: str | None
     source_platform: str
     work_category: str | None
+    source_message_preview: str | None = None
     source_message_id: int | None
     created_at: datetime
     updated_at: datetime
@@ -84,3 +85,11 @@ class OverviewOut(BaseModel):
     overdue_tasks: list[TaskOut]
     recent_messages: list[dict]
     latest_summary: DailySummaryOut | None
+
+
+class TaskDetailsOut(BaseModel):
+    task: TaskOut
+    source_message_content: str | None
+    summary: str
+    todo_items: list[str]
+    stakeholders: list[str]

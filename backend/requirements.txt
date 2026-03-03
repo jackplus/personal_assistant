@@ -5,6 +5,7 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 apscheduler==3.10.4
 python-telegram-bot==21.10
+telethon==1.37.0
 openai==1.59.6
 python-dateutil==2.9.0.post0
 httpx==0.28.1

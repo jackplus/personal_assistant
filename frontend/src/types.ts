@@ -11,9 +11,18 @@ export interface Task {
   assignee_name: string | null;
   source_platform: string;
   work_category: string | null;
+  source_message_preview?: string | null;
   source_message_id: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface TaskDetails {
+  task: Task;
+  source_message_content: string | null;
+  summary: string;
+  todo_items: string[];
+  stakeholders: string[];
 }
 
 export interface Contact {

@@ -85,8 +85,11 @@ def upsert_task(
     db,
     title: str,
     due_at: datetime,
-    assignee_name: str,
-    work_category: str,
+    assignee_name: str | None,
+    work_category: str | None,
+    description: str | None = None,
+    source_message_id: int | None = None,
+    source_platform: str = "telegram",
     status: TaskStatus = TaskStatus.TODO,
     priority: int = 3,
 ) -> Task:
@@ -94,7 +97,9 @@ def upsert_task(
     if task:
         task.due_at = due_at
         task.work_category = work_category
-        task.source_platform = "telegram"
+        task.description = description
+        task.source_message_id = source_message_id
+        task.source_platform = source_platform
         task.status = status
         task.priority = priority
         db.flush()
@@ -102,11 +107,12 @@ def upsert_task(
 
     task = Task(
         title=title,
-        description="Seeded demo task",
+        description=description,
         due_at=due_at,
         assignee_name=assignee_name,
-        source_platform="telegram",
+        source_platform=source_platform,
         work_category=work_category,
+        source_message_id=source_message_id,
         status=status,
         priority=priority,
     )
@@ -176,21 +182,21 @@ def seed_demo_data() -> None:
                 db,
                 conv_alice.id,
                 "seed_msg_1",
-                "请明天下午前跟进合同修改，并同步项目里程碑。",
+                "@ted 请明天下午前跟进合同修改，并和@legal确认条款，再同步客户里程碑。",
                 now - timedelta(hours=3),
             ),
             upsert_message(
                 db,
                 conv_bob.id,
                 "seed_msg_2",
-                "Need follow up on invoice and payment task this week.",
+                "@finance Need follow up on invoice and payment task this week, then send update to @alice.",
                 now - timedelta(hours=2),
             ),
             upsert_message(
                 db,
                 conv_cathy.id,
                 "seed_msg_3",
-                "周末要不要一起去苏州？",
+                "周末要不要一起去苏州？另外下周产品方案请先整理一个初稿。",
                 now - timedelta(hours=1),
             ),
         ]
@@ -201,28 +207,45 @@ def seed_demo_data() -> None:
 
         upsert_task(
             db,
-            title="准备客户A报价说明",
+            title="跟进客户A合同与里程碑确认",
             due_at=now + timedelta(hours=8),
             assignee_name="Ted",
             work_category="sales",
+            description="根据聊天记录推进合同修订，联动法务并向客户同步最终里程碑。",
+            source_message_id=messages[0].id,
             priority=2,
         )
         upsert_task(
             db,
-            title="整理项目周报",
+            title="处理发票与付款进度同步",
             due_at=now + timedelta(days=1, hours=4),
-            assignee_name="Ted",
-            work_category="operations",
+            assignee_name="Finance",
+            work_category="finance",
+            description="核对invoice，确认付款节点，并给项目联系人回传进度。",
+            source_message_id=messages[1].id,
             priority=3,
         )
         upsert_task(
             db,
-            title="审核供应商付款单",
+            title="整理下周产品方案初稿",
             due_at=now + timedelta(days=2),
-            assignee_name="Finance",
-            work_category="finance",
+            assignee_name="Product",
+            work_category="product",
+            description="输出方案初稿并对齐关键stakeholder后进入评审。",
+            source_message_id=messages[2].id,
             status=TaskStatus.IN_PROGRESS,
             priority=2,
+        )
+        upsert_task(
+            db,
+            title="准备项目周会纪要模板",
+            due_at=now + timedelta(days=1),
+            assignee_name="Ted",
+            work_category="operations",
+            description="提前准备会议纪要模板，便于会后快速沉淀行动项。",
+            source_platform="manual",
+            status=TaskStatus.TODO,
+            priority=3,
         )
 
         write_calendar_mock_file()

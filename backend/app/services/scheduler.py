@@ -3,10 +3,12 @@ from __future__ import annotations
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.db import SessionLocal
+from app.config import settings
 from app.services.calendar_sync import sync_google_calendar
 from app.services.summary_service import generate_daily_summary
 from app.services.task_engine import send_due_task_reminders
 from app.services.telegram_connector import sync_telegram_updates
+from app.services.telegram_user_connector import sync_telegram_user_updates
 
 
 scheduler = BackgroundScheduler(timezone="UTC")
@@ -15,7 +17,10 @@ scheduler = BackgroundScheduler(timezone="UTC")
 def _job_sync_telegram() -> None:
     db = SessionLocal()
     try:
-        sync_telegram_updates(db)
+        if settings.telegram_sync_mode == "user":
+            sync_telegram_user_updates(db)
+        else:
+            sync_telegram_updates(db)
     finally:
         db.close()
 

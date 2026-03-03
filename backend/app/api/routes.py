@@ -7,13 +7,23 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.db import get_db
+from app.config import settings
 from app.models import CalendarEvent, Contact, Conversation, DailySummary, Message, Task, TaskStatus
-from app.schemas import CalendarEventOut, ContactOut, ContactTagsUpdate, OverviewOut, TaskCreate, TaskOut, TaskPatch
+from app.schemas import CalendarEventOut, ContactOut, ContactTagsUpdate, OverviewOut, TaskCreate, TaskDetailsOut, TaskOut, TaskPatch
 from app.services.calendar_sync import sync_google_calendar
 from app.services.summary_service import generate_daily_summary
+from app.services.task_breakdown import build_task_breakdown
 from app.services.telegram_connector import sync_telegram_updates
+from app.services.telegram_user_connector import sync_telegram_user_updates
 
 router = APIRouter(prefix="/api")
+
+
+def _to_task_out(task: Task) -> TaskOut:
+    preview = None
+    if task.source_message and task.source_message.content:
+        preview = task.source_message.content[:120]
+    return TaskOut.model_validate(task).model_copy(update={"source_message_preview": preview})
 
 
 @router.get("/dashboard/overview", response_model=OverviewOut)
@@ -73,8 +83,8 @@ def get_overview(db: Session = Depends(get_db)) -> OverviewOut:
         contact_tag_counts=counts,
         platform_counts=platform_counts,
         work_category_counts=work_category_counts,
-        today_tasks=[TaskOut.model_validate(t) for t in tasks_today],
-        overdue_tasks=[TaskOut.model_validate(t) for t in overdue],
+        today_tasks=[_to_task_out(t) for t in tasks_today],
+        overdue_tasks=[_to_task_out(t) for t in overdue],
         recent_messages=[
             {
                 "id": m.id,
@@ -141,7 +151,7 @@ def list_tasks(
     work_category: str | None = None,
     db: Session = Depends(get_db),
 ) -> list[TaskOut]:
-    query = db.query(Task).order_by(Task.created_at.desc())
+    query = db.query(Task).options(joinedload(Task.source_message)).order_by(Task.created_at.desc())
     if status:
         query = query.filter(Task.status == status)
     if assignee_name:
@@ -155,7 +165,7 @@ def list_tasks(
             query = query.filter(Task.work_category.is_(None))
         else:
             query = query.filter(Task.work_category == work_category)
-    return [TaskOut.model_validate(t) for t in query.all()]
+    return [_to_task_out(t) for t in query.all()]
 
 
 @router.post("/tasks", response_model=TaskOut)
@@ -164,7 +174,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> TaskOut:
     db.add(task)
     db.commit()
     db.refresh(task)
-    return TaskOut.model_validate(task)
+    return _to_task_out(task)
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut)
@@ -176,7 +186,29 @@ def patch_task(task_id: int, payload: TaskPatch, db: Session = Depends(get_db)) 
         setattr(task, key, value)
     db.commit()
     db.refresh(task)
-    return TaskOut.model_validate(task)
+    return _to_task_out(task)
+
+
+@router.get("/tasks/{task_id}/details", response_model=TaskDetailsOut)
+def get_task_details(task_id: int, db: Session = Depends(get_db)) -> TaskDetailsOut:
+    task = (
+        db.query(Task)
+        .options(joinedload(Task.source_message))
+        .filter(Task.id == task_id)
+        .first()
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="task not found")
+
+    source_message_content = task.source_message.content if task.source_message else None
+    summary, todo_items, stakeholders = build_task_breakdown(task, source_message_content)
+    return TaskDetailsOut(
+        task=_to_task_out(task),
+        source_message_content=source_message_content,
+        summary=summary,
+        todo_items=todo_items,
+        stakeholders=stakeholders,
+    )
 
 
 @router.get("/calendar/events", response_model=list[CalendarEventOut])
@@ -212,7 +244,14 @@ def list_calendar_events(db: Session = Depends(get_db)) -> list[CalendarEventOut
 
 @router.post("/sync/telegram")
 def manual_sync_telegram(db: Session = Depends(get_db)) -> dict:
+    if settings.telegram_sync_mode == "user":
+        return sync_telegram_user_updates(db)
     return sync_telegram_updates(db)
+
+
+@router.post("/sync/telegram/user")
+def manual_sync_telegram_user(db: Session = Depends(get_db)) -> dict:
+    return sync_telegram_user_updates(db)
 
 
 @router.post("/sync/calendar")
